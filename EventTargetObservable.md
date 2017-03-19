@@ -1,6 +1,19 @@
 # Extending EventTarget with Observable
 
-This proposal would add a new interface to the DOM: `EventTargetObservable`. The `EventTargetObservable` object represents a target to which an event is dispatched when something has occurred. Calling the `EventTargetObservable`'s `on` method produces an `Observable`. An event received by the `EventTargetObservable` is dispatched to the observers of an `Observable` created by `on` provided the type of the event matches the type argument passed to the `on` method when it was invoked.
+Currently the web has two primitives with which developers can build concurrent programs:
+
+1. EventTarget
+2. Promise
+
+Unfortunately these primitives are difficult to compose without shared mutable state, a common source of bugs in concurrent applications like user interfaces. This proposal aims to make managing concurrency more ergonomic by adding a new interface to the DOM: `ObservableEventTarget`. An `ObservableEventTarget` is an interface which extends `EventTarget`, an object to which an event is dispatched when something has occurred.
+
+An `ObservableEventTarget` can be adapted to an `Observable` that dispatches the events received by that `ObservableEventTarget` to the `Observable`'s observers.
+
+`Observable`s share a common subset of `EventTarget` and `Promise` semantics. Consequently they can allow concurrent programs which use both EventTargets and Promises to be built compositionally.
+
+## ObservableEventTarget API
+
+The `ObservableEventTarget` interface introduces a new `on` method to `EventTarget`. The `on` method created an`Observable` which forwards events dispatched to the `ObservableEventTarget` to its Observers when the type of the event matches the type argument passed to the `on` method.
 
 ```
 interface Event { /* https://dom.spec.whatwg.org/#event */ }
@@ -24,37 +37,31 @@ dictionary OnOptions {
   boolean once = false;
 }
 
-interface EventTargetObservable extends EventTarget {
+interface ObservableEventTarget extends EventTarget {
   Observable<Event> on(DOMString type, optional (OnOptions or boolean) options);
 }
 ```
 
-Any implementer of `EventTarget` can additionally implement this interface to make it possible to adapt the `EventTarget` to an `Observable.`
+Any implementer of `EventTarget` can additionally implement `ObservableEventTarget` to enable itself to be adapted to an `Observable` .
 
 ## Design Considerations
 
-The semantics of `EventTarget` and `Observable`'s subscription APIs cleanly overlap. Both share the following semantics...
+The semantics of `EventTarget`'s and `Observable`'s subscription APIs overlap cleanly. Both share the following semantics...
 
 * the ability to synchronously subscribe and unsubscribe from notifications
 * the ability to synchronously dispatch notifications
-* errors thrown from notification handlers are reported to the host, but are not propagated
+* errors thrown from notification handlers are reported to the host rather than being propagated
 
-`EventTarget`s support additional semantics which pertain to the way events are propagated the DOM. The aim of the proposed design is to provide an API that allow `EventTarget`-specific semantics to be described at the point of adaptation, thereby allowing the semantics of EventTarget to be narrowed to those of Observable without impacting expressiveness.
-
-The `on` method accepts an `OnOptions` dictionary object. The `OnOptions` dictionary extends the DOM's `AddEventListenerOptions` dictionary object and adds two additional fields:
+`EventTarget`s have additional semantics, most of which relate to the way events are propagated through the DOM. The aim of the proposed `on` method's API design is to allow these EventTarget-specific concerns to be handled at the point of adaptation. The `on` method accepts an `OnOptions` dictionary object. The `OnOptions` dictionary extends the DOM's `AddEventListenerOptions` dictionary object and adds two additional fields:
 
 1. `receiveError`
 2. `handler`
 
-The `receiveError` member indicates whether or not events with type error are dispatched to Observers error methods.
+### The  `OnOptions` `receiveError` member
 
-The `handler` callback function is invoked on the event object prior to the event being dispatched to the Observable's Observers. The handler is intended to be used to allow developers to execute stateful operations on the Event object within the current tick.
+The `receiveError` member specifies whether or not events with type `"error"` should be dispatched to each Observer's  `error` methods.
 
-## Example Usage
-
-### Image Preloading
-
-In the example below an `Observable` is created which dispatches a "load" event completes when an image successfully preloads, and dispatches an "error" notification if the image load is unsuccessful.
+In the example below the  `on` method is used to create an `Observable` which dispatches an Image's "load" event to its observers. Setting the `"once"` member of the `OnOptions` dictionary to `true` results in a `complete`  notification being dispatched to the observers immediately afterwards. Once an Observer has been dispatched a `complete` notification, it is unsubscribed from the Observable and consequently the `ObservableEventTarget`.
 
 ```js
 const displayImage = document.querySelector("#displayImage");
@@ -69,13 +76,22 @@ load.subscribe({
   },
   error(e) {
     displayImage.src = "errorloading.png";
+  },
+  complete() {
+    // this notification will be received after next ()
+    // as a result of the once member being set to true
   }
 })
 ```
 
-### Custom Gestures with Event Composition
+Note that the `receiveError` member of the `OnOptions` object is set to true. Therefore if the Image receives an `"error"` Event, the Event is passed to the `error`  method of each of the `Observable`'s `Observer`s. This too results in unsubscription from all of the Image's underlying events.
 
-In this example event composition is used to allow an HTML button to be absolutely positioned in an online WYSWYG editor using drag and drop. The `handler` member of the `OnOptions` object is set to a function which prevents the default action of the browser from occurring. This ensures that the button is not depressed when it is being dragged around the screen.
+
+### The  `OnOptions` `handler` member
+
+The `handler` callback function is invoked on the event object prior to the event being dispatched to the Observable's Observers. The handler gives developers the ability execute stateful operations on the Event object (ex. `preventDefault`, `stopPropagation`),  within the same tick on the event loop as the event is received.
+
+In the example below, event composition is used build a drag method for a button to allow it to be absolutely positioned in an online WYSWYG editor. Note that the `handler` member of the `OnOptions` object is set to a function which prevents the host browser from initiating its default action. This ensures that the button does not appear pressed when it is being dragged around the design surface.
 
 ```js
 import "_" from "lodash-for-observable";
@@ -100,17 +116,13 @@ mouseDrags.subscribe({
 })
 ```
 
-### Composing Event Streams and Async Requests
-
-<Insert auto complete box example here>
-
 ## Example Implementation
 
-This is an example implementation of EventTargetObservable. The `on` method delegates to
+This is an example implementation of ObservableEventTarget. The `on` method delegates to
 `addEventListener`, and adds a handler for an `"error"` event if the `receiveError` member on the `OnOptions` object has a value of `true`.
 
 ```js
-class EventTargetObservable extends EventTarget {
+class ObservableEventTarget extends EventTarget {
   on(type, opts) {
     return Observable(observer => {
       if (typeof opts !== "boolean") {
@@ -148,6 +160,9 @@ class EventTargetObservable extends EventTarget {
         this.addEventListener("error", errorHandler)
       }
 
+      // unsubscription logic executed when either the complete or
+      // error method is invoked on Observer, or the consumer
+      // unsubscribes.
       return () => {
         this.removeEventListener(type);
 
@@ -160,7 +175,7 @@ class EventTargetObservable extends EventTarget {
 }
 ```
 
-## Rationale for Observables on the Web
+## Why does the web need Observable?
 
 Event-driven applications like user interfaces need to remain responsive while performing long-running operations. The `Promise.prototype.then` and `Promise.all` combinators allow for sequential and concurrent coordination of async operations respectively. Unfortunately these concurrency coordination primitives are insufficient for most user interfaces. Ignoring or queueing user events while performing an async operation negatively impacts application responsiveness. Furthermore dispatching a new async operation concurrently in response to each incoming event can introduce race conditions as these async operations may complete out of order.
 
@@ -192,7 +207,7 @@ Note that **all of these bugs can be avoided through the use of the "Switch Late
 
 1. "Switch Latest" with Async Functions and Promises
 2. "Switch Latest" with EventTarget, Promises, and shared mutable state
-3. "Switch Latest" with EventTargetObservable and Promises
+3. "Switch Latest" with ObservableEventTarget and Promises
 
 #### Solution 1: Async Functions and Promises
 
@@ -398,14 +413,17 @@ if (thisOperation !== currentOperation) {
 if (thisOperation !== currentOperation) {
   // ...snip...
 }
+
+// ...snip...
+
+nextButton.removeEventListener("click", nextHandler);
+previousButton.removeEventListener("click", previousHandler);
+subSelect.removeEventListener("change", subSelectHandler);
 ```
 
-Each EventTarget also qualifies as mutable state, as handlers are unsubscribed explicitly when 
 Yet more shared mutable state is necessary because EventTarget and Promise do not compose. Note that in order to make the values resolved by `Promises` available to `EventTarget` handlers, it is necessary to write them to the shared mutable `posts` variable.
 
-
-
-#### Solution 3: EventTargetObservable and Promises
+#### Solution 3: ObservableEventTarget and Promises
 
 The previous solution relied on mutable state to implement the "Switch Latest" concurrency coordination pattern. Using Observable it is possible to avoid using shared mutable state for concurrency coordination by using the `switchLatest` and `switchMap` functions offered by userland libraries.
 
@@ -547,6 +565,6 @@ postDetails.subscribe({
 
 Note that the resulting code is shorter than the correct previous solution. More importantly the code contains does not utilize any shared mutable state for concurrency coordination, allowing every identifier to be labeled `const.` The only shared mutable state is the DOM elements, but this state is not used to coordinate concurrency and must be changed to fulfill the requirements.
 
-## A More Compositional Web with EventTargetObservable
+## A More Compositional Web with ObservableEventTarget
 
-EventTargetObservable offers the possibility of composing the web's async primitives.
+ObservableEventTarget offers the possibility of composing the web's async primitives.
