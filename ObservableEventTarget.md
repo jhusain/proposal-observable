@@ -568,3 +568,70 @@ Note that the resulting code is shorter than the correct previous solution. More
 ## A More Compositional Web with ObservableEventTarget
 
 ObservableEventTarget offers the possibility of composing the web's async primitives.
+
+## Appendix
+
+### switchLatest implementation
+
+```js
+function switchLatest(outerObservable) {
+  return new Observable(observer => {
+    let innerSubscription;
+    let outerSubscription;
+
+    // unsubscribe the outer Subscription and inner Subscription if they exist
+    let unsubscribe = () => {
+        if (outerSubscription) {
+          outerSubscription.unsubscribe();
+        }
+        if (innerSubscription) {
+          innerSubscription.unsubscribe();
+        }
+    };
+
+    // subscribe to outer observable
+    outerObservable.subscribe({
+      start(outerSub) {
+        outerSubscription = outerSub;
+      },
+      next(innerObservable) {
+        // unsubscribe if currently subscribed to an Observable
+        if (innerSubscription) {
+          innerSubscription.unsubscribe();
+        }
+        innerObservable.subscribe({
+          start(innerSub) {
+            innerSubscription = innerSub;
+          },
+          next(value) {
+            observer.next(value);
+          },
+          error(e) {
+            unsubscribe();          
+            observer.error(e);
+          },
+          complete() {
+            innerSubscription = null;
+            if (outerSubscription == null) {
+              observer.complete();
+            }
+          }
+        });
+      },
+      error(e) {
+        unsubscribe();      
+        observer.error(e);
+      },
+      complete() {
+        outerSubscription = null;
+        if (innerSubscription == null) {
+          observer.complete();
+        }
+      }
+    })
+  })
+
+  return unsubscribe;
+}
+```js
+
