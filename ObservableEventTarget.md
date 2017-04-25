@@ -633,5 +633,5 @@ function switchLatest(outerObservable) {
 
   return unsubscribe;
 }
-```js
+```
 
