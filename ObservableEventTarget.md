@@ -175,7 +175,7 @@ class ObservableEventTarget extends EventTarget {
 
 ## Problem: EventTargets and Promises are difficult to Compose
 
-Web applications need to remain responsive to user input while performing long-running operations like network requests. Consequently web applications often subscribe to EventTargets and Promises concurrently. In some circumstances, an application may start additional concurrent operations when each new event of a particular type is received (ex. a web browser starting a new concurrent download for each file link clicked). However just as often web applications will respond to events by canceling or ignoring the output of one or more concurrently running tasks (ex. canceling an outstanding request for a view's data when the user navigates elsewhere). 
+Web applications need to remain responsive to user input while performing long-running operations like network requests. Consequently web applications often subscribe to EventTargets and Promises concurrently. In some circumstances, an application may start additional concurrent operations when each new event of a particular type is received (ex. a web browser starting a new concurrent download for each file link clicked). However web applications often respond to events by **canceling or ignoring the output of one or more concurrently running tasks** (ex. canceling an outstanding request for a view's data when the user navigates elsewhere). 
 
 Unfortunately this common concurrency coordination pattern, in which outstanding network requests are canceled when an event of a certain type is received, is challenging to implement compositionally using EventTargets and Promises. These challenges will be demonstrated using the use case of an image browser app created for a news aggregator.
 
@@ -185,7 +185,7 @@ Consider the use case of a web app which allows users to browse through images p
 
 ![Aggregator](http://tc39.github.io/proposal-observable/aggregator.png)
 
-A user can select from several image-heavy subs using a select box. Each time a new sub is selected the app downloads the first 300 post summaries from that sub. Once the posts have been loaded, the user can navigate through the image associated with each post using a next and previous button. When the user navigates to a new post, the image is displayed as soon as it has been successfully preloaded. If the image load is not successful, or the post does have an associated image, a placeholder image is displayed. Whenever data is being loaded from the network, a transparent animated loading image is rendered over top of the image.
+A user can select from several image-oriented subs using a select box. Each time a new sub is selected, the app downloads the first 300 post summaries from that sub. Once the posts have been loaded, the user can navigate through the images associated with each post using a next and previous button. When the user navigates to a new post, the image is displayed as soon as it has been successfully preloaded. If the image load is not successful, or the post does have an associated image, a placeholder image is displayed. Whenever data is being loaded from the network, a transparent animated loading image is rendered over top of the image.
 
 This app may appear simple, but implementations could suffer from any of the following race conditions:
 
@@ -195,8 +195,8 @@ This app may appear simple, but implementations could suffer from any of the fol
 
 Note that all of these race conditions have one thing in common: they can be avoided by unsubscribing from a pending network request or an event type when an event is received. In the following subsections, two solutions will be contrasted:
 
-1.  Coordinating concurrency using shared mutable state
-2. Coordinating concurrency compositionally using EventTargetObservable and a small combinator library 
+1. Coordinating concurrency using shared mutable state
+2. Coordinating concurrency compositionally using EventTargetObservable and a library 
 
 #### Solution: Coordinate Concurrency using Shared Mutable State
 
@@ -325,7 +325,6 @@ Yet more shared mutable state is necessary because EventTarget and Promise do no
 
 #### Alternate Solution: ObservableEventTarget and a small combinator library
 
-##### Introducing the switchLatest method
 Canceling or ignoring the output of a concurrent operation when a new event is received is one of the most common concurrency coordination patterns used in web applications. This common coordination pattern can be encapsulated in a single Observable method: `switchLatest`.
 
 The `switchLatest` combinator transforms a multi-dimensional Observable into an Observable flattened by one dimension. As soon the outer Observable notifies an inner Observable, `switchLatest` unsubscribes from the currently-subscribed inner Observable and subscribes to the most recently notified inner Observable.
@@ -466,10 +465,8 @@ postDetails.subscribe({
 });
 ```
 
-Note that the resulting code is shorter than the correct previous solution. More importantly the code contains does not utilize any shared mutable state for concurrency coordination. The only shared mutable state is the DOM elements, but this state is not used to coordinate concurrency and must be changed to fulfill the requirements.
+Note that the resulting code is shorter than the correct previous solution. More importantly the code contains does not utilize any shared mutable state for concurrency coordination.
 
 ## More Compositional Web Applications with ObservableEventTarget
 
-The Observer pattern is ubiquitous in modern web applications. With the recent introduction of Promises, the web platform has much to gain by including a primitive which can allow EventTargets and Promises to be composed. 
-
-This proposal, along with the Observable proposal currently being considered by the TC-39, are incremental steps towards a more compositional approach to concurrency coordination. If the Observable proposal is accepted, the Observable prototype will have the opportunity to be enriched with useful combinators like the ones used in the combinator library included in the example 
+The web platform has much to gain by including a primitive which can allow EventTargets and Promises to be composed. This proposal, along with the Observable proposal currently being considered by the TC-39, are incremental steps towards a more compositional approach to concurrency coordination. If the Observable proposal is accepted, the Observable prototype will have the opportunity to be enriched with useful combinators over time, eliminating the need for a combinator library in common cases.
