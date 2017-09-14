@@ -17,10 +17,19 @@ The `ObservableEventTarget` interface inherits from `EventTarget` and introduces
 interface Event { /* https://dom.spec.whatwg.org/#event */ }
 
 dictionary OnOptions {  
-  // listen for an "error" event on the EventTarget,
-  // and send it to each Observer's error method
-  boolean receiveError = false;
+  // listen for multiple events on the EventTarget,
+  // and send it to each Observer's next method
+  sequence<DOMString> nextOn = [];
+  
+  // listen for multiple events on the EventTarget,
+  // and send the first one to the Observer's error method
+  sequence<DOMString> errorOn = [];
 
+  // listen for multiple events on the EventTarget,
+  // and invoke each Observer's complete method when
+  // one of these events is received.
+  sequence<DOMString> completeAfter = [];
+  
   // member indicates that the callback will not cancel
   // the event by invoking preventDefault().
   boolean passive = false;,
@@ -36,7 +45,8 @@ dictionary OnOptions {
 }
 
 interface ObservableEventTarget extends EventTarget {
-  Observable<Event> on(DOMString type, optional (OnOptions or boolean) options);
+  Observable<Event> on(DOMString type, OnOptions options);
+  Observable<Event> on(OnOptions options);
 }
 ```
 
@@ -48,16 +58,18 @@ The semantics of `EventTarget`'s and `Observable`'s subscription APIs overlap cl
 
 * the ability to synchronously subscribe and unsubscribe from notifications
 * the ability to synchronously dispatch notifications
-* errors thrown from notification handlers are reported to the host rather than being propagated
+* errors thrown from notification handlers are caught and reported to the host.
 
-`EventTarget`s have semantics which control the way events are propagated through the DOM. The `on` method accepts an `OnOptions` dictionary object which allow event propagation semantics to be specified when the ObservableEventTarget is adapted to an Observable. The `OnOptions` dictionary extends the DOM's `AddEventListenerOptions` dictionary object and adds two additional fields:
+`EventTarget`s have semantics which control the way events are propagated through the DOM. The `on` method accepts an `OnOptions` dictionary object which allow event propagation semantics to be specified when the ObservableEventTarget is adapted to an Observable. The `OnOptions` dictionary extends the DOM's `AddEventListenerOptions` dictionary object and adds four additional fields:
 
-1. `receiveError`
-2. `handler`
+1. `errorOn`
+2. `completeAfter`
+3. `nextOn`
+4. `handler`
 
-### The  `OnOptions` `receiveError` member
+### The  `OnOptions` `errorOn` member
 
-The `receiveError` member specifies whether or not events with type `"error"` should be passed to the  `error` method on the Observable's Observers.
+The `errorOn` member is an array of event types which should be passed to the  `error` method on the Observable's Observers.
 
 In the example below the  `on` method is used to create an `Observable` which dispatches an Image's "load" event to its observers. Setting the `"once"` member of the `OnOptions` dictionary to `true` results in a `complete`  notification being dispatched to the observers immediately afterwards. Once an Observer has been dispatched a `complete` notification, it is unsubscribed from the Observable and consequently the `ObservableEventTarget`.
 
@@ -65,7 +77,7 @@ In the example below the  `on` method is used to create an `Observable` which di
 const displayImage = document.querySelector("#displayImage");
 
 const image = new Image();
-const load = image.on('load', { receiveError: true, once: true });
+const load = image.on('load', { errorOn: [`error`], once: true });
 image.src = "./possibleImage";
 
 load.subscribe({
@@ -82,7 +94,7 @@ load.subscribe({
 })
 ```
 
-Note that the `receiveError` member of the `OnOptions` object is set to true. Therefore if the Image receives an `"error"` Event, the Event is passed to the `error`  method of each of the `Observable`'s `Observer`s. This too results in unsubscription from all of the Image's underlying events.
+Note that the `errorOn` Array in the `OnOptions` object contains the `"error"` event type. Therefore if the Image receives an `"error"` Event, the Event is passed to the `error`  method of each of the `Observable`'s `Observer`s. This too results in unsubscription from all of the Image's underlying events.
 
 
 ### The  `OnOptions` `handler` member
@@ -112,6 +124,41 @@ mouseDrags.subscribe({
     button.style.left = e.offsetY;
   }
 })
+```
+
+### The `OnOptions` `nextOn` member
+
+The `nextOn` member contains an Array of event types which should be passed to the `next` method of the Observable's Observers. The `nextOn` member is only used if no type string is provided to the `EventTarget.prototype.on` method.
+
+The `nextOn` member is useful in conjuction with `errorOn` and `completeAfter` for observing a DOM process which fires a variety of different events.
+
+
+```js
+function handleResponse(xhr) {
+  return xhr.on({ 
+      nextOn: ["loadstart", "progress", "load"], 
+      errorOn: ["abort"], 
+      completeAfter: ["load"] 
+    }).
+    finally(() => view.hideProgressBar()).
+    subscribe({
+      next(ev) {
+        switch(ev.type) {
+          case “loadstart”: 
+            return view.showProgressBar(xhr);
+          case “progress”:  
+            return view.shiftProgressBar(ev);
+          case “load”:      
+            return view.showData(ev);
+        }
+      },
+      error(err) {
+        if (err.type !== “abort”) {
+          view.showError(err);
+        }
+      }
+    });
+}
 ```
 
 ## Example Implementation
@@ -154,8 +201,10 @@ class ObservableEventTarget extends EventTarget {
 
       this.addEventListener(type, eventHandler, opts);
 
-      if (opts.receiveError) {
-        this.addEventListener("error", errorHandler)
+      if (opts.errorOn) {
+        for (let type of errorOn) {
+          this.addEventListener(type, errorHandler)
+        }
       }
 
       // unsubscription logic executed when either the complete or
@@ -164,8 +213,8 @@ class ObservableEventTarget extends EventTarget {
       return () => {
         this.removeEventListener(type);
 
-        if (receiveError) {
-          this.removeEventListener("error", errorHandler);
+        for (let type of errorOn) {
+          this.removeEventListener(type, errorHandler)
         }
       };
     });
