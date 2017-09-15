@@ -169,20 +169,25 @@ This is an example implementation of ObservableEventTarget. The `on` method dele
 ```js
 class ObservableEventTarget extends EventTarget {
   on(type, opts) {
-    return Observable(observer => {
-      if (typeof opts !== "boolean") {
-        opts = {};
-      }
-      else {
-        opts = {
-          capture: opts
-        };
-      }
+    return new Observable(observer => {
+      const normalizedOpts =
+        typeof type === "string" ?
+          Object.assign({}, opts, {nextOn: [type]}) :
+          Object.assign({}, type);
 
-      const handler = (typeof opts.handler === "function") ? opts.handler : null;
-      const once = opts.once;
+      const handler = (typeof normalizedOpts.handler === "function")
+        ? normalizedOpts.handler : null;
 
-      const eventHandler = e => {
+      const once = normalizedOpts.once;
+
+      const nextOn =
+        Array.isArray(normalizedOpts.nextOn) ? normalizedOpts.nextOn : [];
+      const errorOn =
+        Array.isArray(normalizedOpts.errorOn) ? normalizedOpts.errorOn : [];
+      const completeAfter =
+        Array.isArray(normalizedOpts.completeAfter) ? normalizedOpts.completeAfter : [];
+
+      const nextHandler = e => {
         try {
           if (handler != null) {
             handler(e);
@@ -197,24 +202,34 @@ class ObservableEventTarget extends EventTarget {
         }
       };
 
+      for (let type of nextOn) {
+        this.addEventListener(type, nextHandler)
+      }
+
       const errorHandler = observer.error.bind(observer);
+      for (let type of errorOn) {
+        this.addEventListener(type, errorHandler)
+      }
 
-      this.addEventListener(type, eventHandler, opts);
-
-      if (opts.errorOn) {
-        for (let type of errorOn) {
-          this.addEventListener(type, errorHandler)
-        }
+      const completeHandler = observer.complete.bind(observer);
+      for (let type of completeAfter) {
+        this.addEventListener(type, completeHandler)
       }
 
       // unsubscription logic executed when either the complete or
       // error method is invoked on Observer, or the consumer
       // unsubscribes.
       return () => {
-        this.removeEventListener(type);
+        for (let type of nextOn) {
+          this.removeEventListener(type, nextHandler)
+        }
 
         for (let type of errorOn) {
           this.removeEventListener(type, errorHandler)
+        }
+
+        for (let type of completeAfter) {
+          this.removeEventListener(type, completeHandler)
         }
       };
     });
