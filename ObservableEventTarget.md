@@ -32,7 +32,7 @@ dictionary OnOptions {
   
   // member indicates that the callback will not cancel
   // the event by invoking preventDefault().
-  boolean passive = false;,
+  boolean passive = false;
 
   // handler function which can optionally execute stateful
   // actions on the event before the event is dispatched to
@@ -96,6 +96,34 @@ load.subscribe({
 
 Note that the `errorOn` Array in the `OnOptions` object contains the `"error"` event type. Therefore if the Image receives an `"error"` Event, the Event is passed to the `error`  method of each of the `Observable`'s `Observer`s. This too results in unsubscription from all of the Image's underlying events.
 
+### The  `OnOptions` `completeAfter` member
+
+The `completeAfter` member is an array of event types which when received will cause the `complete` method of the Observable's Observers to be invoked.
+
+In the example below the  `on` method is used to create an `Observable` which dispatches an Image's `"load"` event to its observers. Setting the `"once"` member of the `OnOptions` dictionary to `true` results in a `complete`  notification being dispatched to the observers immediately afterwards. Once an Observer has been dispatched a `complete` notification, it is unsubscribed from the Observable and consequently the `ObservableEventTarget`.
+
+```js
+const displayImage = document.querySelector("#displayImage");
+
+const image = new Image();
+const load = image.on('load', { errorOn: [`error`], once: true });
+image.src = "./possibleImage";
+
+load.subscribe({
+  next(e) {
+    displayImage.src = e.target.src;
+  },
+  error(e) {
+    displayImage.src = "errorloading.png";
+  },
+  complete() {
+    // this notification will be received after next ()
+    // as a result of the once member being set to true
+  }
+})
+```
+
+Note that the `errorOn` Array in the `OnOptions` object contains the `"error"` event type. Therefore if the Image receives an `"error"` Event, the Event is passed to the `error`  method of each of the `Observable`'s `Observer`s. This too results in unsubscription from all of the Image's underlying events.
 
 ### The  `OnOptions` `handler` member
 
