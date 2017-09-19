@@ -159,9 +159,6 @@ function handleResponse(xhr) {
 
 ## Example Implementation
 
-This is an example implementation of ObservableEventTarget. The `on` method delegates to
-`addEventListener`, and adds a handler for an `"error"` event if the `receiveError` member on the `OnOptions` object has a value of `true`.
-
 ```js
 class ObservableEventTarget {
   on(type, opts) {
@@ -233,8 +230,3 @@ class ObservableEventTarget {
 }
 ```
 
-
-
-## More Compositional Web Applications with ObservableEventTarget
-
-The web platform has much to gain by including a primitive which can allow EventTargets and Promises to be composed. This proposal, along with the Observable proposal currently being considered by the TC-39, are incremental steps towards a more compositional approach to concurrency coordination. If the Observable proposal is accepted, the Observable prototype will have the opportunity to be enriched with useful combinators over time, eliminating the need for a combinator library in common cases.
