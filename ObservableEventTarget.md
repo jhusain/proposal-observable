@@ -1,6 +1,6 @@
 # Extending EventTarget with Observable
 
-EventTarget has a variety of well-known issues which impact ergonomics. EventTargets have unergonomic unsubscription semantics, and are difficult to compose. This proposal attempts to address both of these concerns by introducing an ObservableEventTarget interface which integrates Observable into the DOM.
+EventTarget has a variety of well-known issues which impact ergonomics. EventTargets have unergonomic subscription semantics, and are difficult to compose. This proposal attempts to address both of these concerns by introducing an ObservableEventTarget interface which integrates Observable into the DOM.
 
 ## ObservableEventTarget interface
 
