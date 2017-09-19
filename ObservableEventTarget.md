@@ -163,7 +163,7 @@ This is an example implementation of ObservableEventTarget. The `on` method dele
 `addEventListener`, and adds a handler for an `"error"` event if the `receiveError` member on the `OnOptions` object has a value of `true`.
 
 ```js
-class ObservableEventTarget extends EventTarget {
+class ObservableEventTarget {
   on(type, opts) {
     return new Observable(observer => {
       const normalizedOpts =
